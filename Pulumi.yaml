@@ -1,0 +1,3 @@
+name: pulumi-serverless
+runtime: dotnet
+description: A serverless file uploader application
