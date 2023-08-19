@@ -32,13 +32,12 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
                 Statements =
                     inputList
                         [ GetPolicyDocumentStatementInputArgs(
-                              Actions = inputList [ input "sts:AssumeRole" ],
-                              Effect = input "Allow",
+                              Actions = inputList [ "sts:AssumeRole" ],
                               Principals =
                                   inputList
                                       [ GetPolicyDocumentStatementPrincipalInputArgs(
                                             Type = input "Service",
-                                            Identifiers = inputList [ input "lambda.amazonaws.com" ]
+                                            Identifiers = inputList [ "lambda.amazonaws.com" ]
                                         ) ]
                           ) ]
             )
@@ -50,8 +49,7 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
                 Statements =
                     inputList
                         [ GetPolicyDocumentStatementInputArgs(
-                              Actions = inputList [ input "s3:*" ],
-                              Effect = input "Allow",
+                              Actions = inputList [ "s3:*" ],
                               Resources = inputList [ io args.bucket.Arn ]
                           ) ]
             )
@@ -63,8 +61,7 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
                 Statements =
                     inputList
                         [ GetPolicyDocumentStatementInputArgs(
-                              Actions = inputList [ input "dynamodb:*" ],
-                              Effect = input "Allow",
+                              Actions = inputList [ "dynamodb:*" ],
                               Resources = inputList [ io args.table.Arn ]
                           ) ]
             )
