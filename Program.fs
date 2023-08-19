@@ -75,12 +75,11 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
                   } ]
         }
 
-    let rp =
-        ``rolePolicyAttachment`` {
+    do ``rolePolicyAttachment`` {
             name "lambdaBasicExecution"
             role lambdaRole.Id
             policyArn "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-        }
+        } |> ignore
 
     let lambda =
         ``function`` {
@@ -94,17 +93,16 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
             functionEnvironment { variables [ ("TABLE_NAME", args.table.Name) ] }
         }
 
-    let perm =
-        ``permission`` {
-            name "s3-invoke-permission"
-            action "lambda:InvokeFunction"
-            ``function`` lambda.Name
-            principal "s3.amazonaws.com"
-            sourceArn args.bucket.Arn
-        }
 
-    let notification =
-        ``bucketNotification`` {
+    do ``permission`` {
+                name "s3-invoke-permission"
+                action "lambda:InvokeFunction"
+                ``function`` lambda.Name
+                principal "s3.amazonaws.com"
+                sourceArn args.bucket.Arn
+        } |> ignore
+
+    do ``bucketNotification`` {
             name "s3-object-put"
             bucket args.bucket.Id
 
@@ -113,9 +111,11 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
                       lambdaFunctionArn lambda.Arn
                       events [ "s3:ObjectCreated:*" ]
                   } ]
-        }
+        } |> ignore
 
-    let _ = self.RegisterOutputs()
+    do self.RegisterOutputs() |> ignore
+
+    new(name: string, args: StorageFunctionArgs) = StorageFunction(name, args, ComponentResourceOptions())
 
 
 let infra () =
@@ -144,8 +144,8 @@ let infra () =
         }
 
 
-    StorageFunction("file-storage-event-handler", { bucket = bucket; table = table }, ComponentResourceOptions())
-    |> ignore
+    StorageFunction("file-storage-event-handler", { bucket = bucket; table = table })
+        |> ignore
 
     // Export the name of the bucket
     dict [ ("bucketName", bucket.Id :> obj) ]
