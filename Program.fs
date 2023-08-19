@@ -1,8 +1,8 @@
 ﻿module Program
 
 open Pulumi
-
 open Pulumi.FSharp
+
 open Pulumi.FSharp.Aws.DynamoDB
 open Pulumi.FSharp.Aws.DynamoDB.Inputs
 open Pulumi.FSharp.Aws.S3
@@ -13,16 +13,35 @@ open Pulumi.FSharp.Aws.Lambda
 open Pulumi.FSharp.Aws.Lambda.Inputs
 
 open Pulumi.Aws.S3
-open Pulumi.Aws.DynamoDB
 open Pulumi.Aws.Lambda
 open Pulumi.Aws.Iam
 open Pulumi.Aws.Iam.Inputs
 
 
-type StorageFunctionArgs = { bucket: Bucket; table: Table }
+type StorageWatcherArgs = { bucket: Bucket }
 
-type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentResourceOptions) as self =
-    inherit ComponentResource("aws:StorageFunction", name, opts)
+type StorageWatcher(name: string, args: StorageWatcherArgs, opts: ComponentResourceOptions) as self =
+    inherit ComponentResource("aws:StorageWatcher", name, opts)
+
+    let tableName = name + "-db"
+    let table =
+        ``table`` {
+            name tableName
+            readCapacity 1
+            writeCapacity 1
+            attributes
+                [ tableAttribute {
+                      name "filename"
+                      resourceType "S"
+                  }
+                  tableAttribute {
+                      name "timestamp"
+                      resourceType "S"
+                  } ]
+
+            hashKey "filename"
+            rangeKey "timestamp"
+        }
 
     let archive = (FileArchive("./function_code") :> Archive)
 
@@ -62,7 +81,7 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
                     inputList
                         [ GetPolicyDocumentStatementInputArgs(
                               Actions = inputList [ "dynamodb:*" ],
-                              Resources = inputList [ io args.table.Arn ]
+                              Resources = inputList [ io table.Arn ]
                           ) ]
             )
         )
@@ -92,16 +111,17 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
         }
         |> ignore
 
+    let functionName = $"{name}-func"
     let lambda =
         ``function`` {
-            name "s3-file-watcher"
+            name functionName
             runtime Runtime.Python3d10
             code archive
             handler "lambda_function.lambda_handler"
             role lambdaRole.Arn
             timeout 10
             functionTracingConfig { mode "Active" }
-            functionEnvironment { variables [ ("TABLE_NAME", args.table.Name) ] }
+            functionEnvironment { variables [ ("TABLE_NAME", table.Name) ] }
         }
 
 
@@ -130,36 +150,17 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
 
     do self.RegisterOutputs() |> ignore
 
-    new(name: string, args: StorageFunctionArgs) = StorageFunction(name, args, ComponentResourceOptions())
+    new(name: string, args: StorageWatcherArgs) = StorageWatcher(name, args, ComponentResourceOptions())
 
 
 let infra () =
 
+    let bn = "file-storage"
+
     // Create an AWS resource (S3 Bucket)
-    let bucket = ``bucket`` { name "file-storage" }
+    let bucket = ``bucket`` { name bn }
 
-    let table =
-        ``table`` {
-            name "file-storage-db"
-            readCapacity 1
-            writeCapacity 1
-
-            attributes
-                [ tableAttribute {
-                      name "filename"
-                      resourceType "S"
-                  }
-                  tableAttribute {
-                      name "timestamp"
-                      resourceType "S"
-                  } ]
-
-            hashKey "filename"
-            rangeKey "timestamp"
-        }
-
-
-    StorageFunction("file-storage-event-handler", { bucket = bucket; table = table })
+    StorageWatcher($"{bn}-watcher", { bucket = bucket; })
     |> ignore
 
     // Export the name of the bucket
