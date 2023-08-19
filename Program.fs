@@ -51,7 +51,7 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
                         [ GetPolicyDocumentStatementInputArgs(
                               Actions = inputList [ "s3:*" ],
                               Resources = inputList [ io args.bucket.Arn ]
-                          ) ]
+                          )]
             )
         )
 
@@ -73,7 +73,8 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
             assumeRolePolicy (arPolicy.Apply(fun p -> p.Json))
 
             inlinePolicies
-                [ ``roleInlinePolicy`` {
+                [
+                  ``roleInlinePolicy`` {
                       name "dynamodb-policy"
                       policy (dynamoPolicy.Apply(fun p -> p.Json))
                   }
