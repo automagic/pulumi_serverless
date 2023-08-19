@@ -15,6 +15,8 @@ open Pulumi.FSharp.Aws.Lambda.Inputs
 open Pulumi.Aws.S3
 open Pulumi.Aws.DynamoDB
 open Pulumi.Aws.Lambda
+open Pulumi.Aws.Iam
+open Pulumi.Aws.Iam.Inputs
 
 
 type StorageFunctionArgs = { bucket: Bucket; table: Table }
@@ -24,62 +26,73 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
 
     let archive = (FileArchive("./function_code") :> Archive)
 
+    let arPolicy =
+        GetPolicyDocument.Invoke(
+            GetPolicyDocumentInvokeArgs(
+                Statements =
+                    inputList
+                        [ GetPolicyDocumentStatementInputArgs(
+                              Actions = inputList [ input "sts:AssumeRole" ],
+                              Effect = input "Allow",
+                              Principals =
+                                  inputList
+                                      [ GetPolicyDocumentStatementPrincipalInputArgs(
+                                            Type = input "Service",
+                                            Identifiers = inputList [ input "lambda.amazonaws.com" ]
+                                        ) ]
+                          ) ]
+            )
+        )
+
+    let s3Policy =
+        GetPolicyDocument.Invoke(
+            GetPolicyDocumentInvokeArgs(
+                Statements =
+                    inputList
+                        [ GetPolicyDocumentStatementInputArgs(
+                              Actions = inputList [ input "s3:*" ],
+                              Effect = input "Allow",
+                              Resources = inputList [ io args.bucket.Arn ]
+                          ) ]
+            )
+        )
+
+    let dynamoPolicy =
+        GetPolicyDocument.Invoke(
+            GetPolicyDocumentInvokeArgs(
+                Statements =
+                    inputList
+                        [ GetPolicyDocumentStatementInputArgs(
+                              Actions = inputList [ input "dynamodb:*" ],
+                              Effect = input "Allow",
+                              Resources = inputList [ io args.table.Arn ]
+                          ) ]
+            )
+        )
+
     let lambdaRole =
         ``role`` {
             name "lambdaExecutionRole"
-            assumeRolePolicy
-                """{
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Action": "sts:AssumeRole",
-                                    "Principal": {
-                                        "Service": "lambda.amazonaws.com"
-                                    },
-                                    "Effect": "Allow",
-                                    "Sid": ""
-                                }
-                            ]
-                        }"""
+            assumeRolePolicy (arPolicy.Apply(fun p -> p.Json))
 
             inlinePolicies
                 [ ``roleInlinePolicy`` {
                       name "dynamodb-policy"
-                      policy
-                          """{
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Action": "dynamodb:*",
-                                    "Resource": "*",
-                                    "Effect": "Allow",
-                                    "Sid": ""
-                                }
-                            ]
-                        }"""
+                      policy (dynamoPolicy.Apply(fun p -> p.Json))
                   }
                   ``roleInlinePolicy`` {
                       name "s3-policy"
-                      policy
-                          """{
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Action": "s3:*",
-                                    "Resource": "*",
-                                    "Effect": "Allow",
-                                    "Sid": ""
-                                }
-                            ]
-                        }"""
+                      policy (s3Policy.Apply(fun p -> p.Json))
                   } ]
         }
 
-    do ``rolePolicyAttachment`` {
+    do
+        ``rolePolicyAttachment`` {
             name "lambdaBasicExecution"
             role lambdaRole.Id
             policyArn "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-        } |> ignore
+        }
+        |> ignore
 
     let lambda =
         ``function`` {
@@ -94,15 +107,18 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
         }
 
 
-    do ``permission`` {
-                name "s3-invoke-permission"
-                action "lambda:InvokeFunction"
-                ``function`` lambda.Name
-                principal "s3.amazonaws.com"
-                sourceArn args.bucket.Arn
-        } |> ignore
+    do
+        ``permission`` {
+            name "s3-invoke-permission"
+            action "lambda:InvokeFunction"
+            ``function`` lambda.Name
+            principal "s3.amazonaws.com"
+            sourceArn args.bucket.Arn
+        }
+        |> ignore
 
-    do ``bucketNotification`` {
+    do
+        ``bucketNotification`` {
             name "s3-object-put"
             bucket args.bucket.Id
 
@@ -111,7 +127,8 @@ type StorageFunction(name: string, args: StorageFunctionArgs, opts: ComponentRes
                       lambdaFunctionArn lambda.Arn
                       events [ "s3:ObjectCreated:*" ]
                   } ]
-        } |> ignore
+        }
+        |> ignore
 
     do self.RegisterOutputs() |> ignore
 
@@ -145,7 +162,7 @@ let infra () =
 
 
     StorageFunction("file-storage-event-handler", { bucket = bucket; table = table })
-        |> ignore
+    |> ignore
 
     // Export the name of the bucket
     dict [ ("bucketName", bucket.Id :> obj) ]
